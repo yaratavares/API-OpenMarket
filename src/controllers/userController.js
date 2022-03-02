@@ -1,28 +1,29 @@
 import bcrypt from "bcrypt";
 import connection from "../db.js";
+import { v4 as uuid } from "uuid";
 
 export async function signup(req, res) {
-  const newUser = req.body;
+  const { nome, email, senha } = req.body;
 
   try {
     const isDuplicate = await connection.query(
       `
     SELECT * FROM usuarios WHERE email = $1
     `,
-      [newUser.email]
+      [email]
     );
 
     if (isDuplicate.rows.length) {
       return res.sendStatus(409);
     }
 
-    const senhaHash = bcrypt.hashSync(newUser.senha, 10);
+    const senhaHash = bcrypt.hashSync(senha, 10);
 
     await connection.query(
       `
       INSERT INTO usuarios (nome, email, senha) VALUES ($1, $2, $3)
     `,
-      [newUser.nome, newUser.email, senhaHash]
+      [nome, email, senhaHash]
     );
 
     res.sendStatus(201);
@@ -33,7 +34,52 @@ export async function signup(req, res) {
 }
 
 export async function signin(req, res) {
-  const user = req.body;
+  const { email, senha } = req.body;
 
-  res.sendStatus(200);
+  try {
+    const user = await connection.query(
+      `
+      SELECT * FROM usuarios WHERE email = $1
+      `,
+      [email]
+    );
+
+    if (!user.rows.length) {
+      return res.sendStatus(404);
+    }
+
+    if (bcrypt.compareSync(senha, user.rows[0].senha)) {
+      const token = uuid();
+
+      const userIsConnect = await connection.query(
+        `
+        SELECT * FROM sessoes WHERE "idUsuario" = $1
+        `,
+        [user.rows[0].id]
+      );
+
+      if (userIsConnect.rows.length) {
+        await connection.query(
+          `
+          UPDATE sessoes SET token = $1 WHERE "idUsuario" = $2 
+        `,
+          [token, user.rows[0].id]
+        );
+        return res.sendStatus(200);
+      }
+
+      await connection.query(
+        `
+        INSERT INTO sessoes ("idUsuario", token) VALUES ( $1, $2)
+        `,
+        [user.rows[0].id, token]
+      );
+      res.sendStatus(201);
+    } else {
+      res.sendStatus(401);
+    }
+  } catch (err) {
+    console.log(err);
+    res.sendStatus(500);
+  }
 }
