@@ -7,22 +7,18 @@ export async function signup(req, res) {
 
   try {
     const isDuplicate = await connection.query(
-      `
-    SELECT * FROM usuarios WHERE email = $1
-    `,
+      "SELECT * FROM usuarios WHERE email = $1",
       [email]
     );
 
-    if (isDuplicate.rows.length) {
+    if (isDuplicate.rowCount !== 0) {
       return res.sendStatus(409);
     }
 
     const senhaHash = bcrypt.hashSync(senha, 10);
 
     await connection.query(
-      `
-      INSERT INTO usuarios (nome, email, senha) VALUES ($1, $2, $3)
-    `,
+      "INSERT INTO usuarios (nome, email, senha) VALUES ($1, $2, $3)",
       [nome, email, senhaHash]
     );
 
@@ -37,42 +33,36 @@ export async function signin(req, res) {
   const { email, senha } = req.body;
 
   try {
-    const user = await connection.query(
-      `
-      SELECT * FROM usuarios WHERE email = $1
-      `,
+    const result = await connection.query(
+      "SELECT * FROM usuarios WHERE email = $1",
       [email]
     );
 
-    if (!user.rows.length) {
+    if (result.rowCount === 0) {
       return res.sendStatus(404);
     }
 
-    if (bcrypt.compareSync(senha, user.rows[0].senha)) {
+    const user = result.rows[0];
+
+    if (bcrypt.compareSync(senha, user.senha)) {
       const token = uuid();
 
       const userIsConnect = await connection.query(
-        `
-        SELECT * FROM sessoes WHERE "idUsuario" = $1
-        `,
-        [user.rows[0].id]
+        `SELECT * FROM sessoes WHERE "idUsuario" = $1`,
+        [user.id]
       );
 
       if (userIsConnect.rows.length) {
         await connection.query(
-          `
-          UPDATE sessoes SET token = $1 WHERE "idUsuario" = $2 
-        `,
-          [token, user.rows[0].id]
+          `UPDATE sessoes SET token = $1 WHERE "idUsuario" = $2`,
+          [token, user.id]
         );
         return res.sendStatus(200);
       }
 
       await connection.query(
-        `
-        INSERT INTO sessoes ("idUsuario", token) VALUES ( $1, $2)
-        `,
-        [user.rows[0].id, token]
+        `INSERT INTO sessoes ("idUsuario", token) VALUES ( $1, $2)`,
+        [user.id, token]
       );
       res.sendStatus(201);
     } else {
